@@ -1,17 +1,48 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useReducer } from 'react';
 
 import IngredientForm from './IngredientForm';
 import IngredientList from './IngredientList';
 import ErrrorModal from '../UI/ErrorModal';
 import Search from './Search';
 
+const ingredientsReducer = (currentIngredients, action) => {
+  switch (action.type) {
+    case 'SET':
+      return action.ingredients;
+    case 'ADD':
+      return [action.ingredient, ...currentIngredients];
+    case 'DELETE':
+      return currentIngredients.filter((ing) => ing.id !== action.id);
+    default:
+      throw new Error('Should not get here');
+  }
+};
+
+const httpReducer = (httpState, action) => {
+  switch (action.type) {
+    case 'SEND':
+      return { isLoading: true, error: null };
+    case 'RESPONSE':
+      return { ...httpState, isLoading: false };
+    case 'ERROR':
+      return { isLoading: false, error: action.error };
+    case 'CLEAR':
+      return { ...httpState, error: null };
+    default:
+      throw new Error('Should not reach here');
+  }
+};
+
 function Ingredients(props) {
-  const [ingredients, setIngredients] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [httpState, dispatchHttpAct] = useReducer(httpReducer, {
+    isLoading: false,
+    error: null,
+  });
+  const [ingredients, dispatchIngAct] = useReducer(ingredientsReducer, []);
 
   const saveIngredientInDB = (ingredient) => {
-    setIsLoading(true);
+    dispatchHttpAct({ type: 'SEND' });
+
     fetch(process.env.REACT_APP_FIREBASE_ENDPOINT, {
       method: 'POST',
       body: JSON.stringify(ingredient),
@@ -25,21 +56,20 @@ function Ingredients(props) {
         return response.json();
       })
       .then((data) => {
-        setIngredients((prevIngredients) => [
-          { id: data.name, ...ingredient },
-          ...prevIngredients,
-        ]);
-        setIsLoading(false);
+        dispatchIngAct({
+          type: 'ADD',
+          ingredient: { id: data.name, ...ingredient },
+        });
+        dispatchHttpAct({ type: 'RESPONSE' });
       })
       .catch((err) => {
         console.log(err.message);
-        setIsLoading(false);
-        setError('something went wrong');
+        dispatchHttpAct({ type: 'ERROR', error: err.message });
       });
   };
 
   const removeItemHandler = (ingredientId) => {
-    setIsLoading(true);
+    dispatchHttpAct({ type: 'SEND' });
 
     fetch(
       `${process.env.REACT_APP_FIREBASE_DELETE_BASE_ENDPOINT}/ingredients/${ingredientId}.json`,
@@ -53,28 +83,25 @@ function Ingredients(props) {
         return response.json();
       })
       .then((data) => {
-        setIngredients((prevIngredients) =>
-          prevIngredients.filter((ingredient) => ingredient.id !== ingredientId)
-        );
-        setIsLoading(false);
+        dispatchIngAct({ type: 'DELETE', id: ingredientId });
+        dispatchHttpAct({ type: 'RESPONSE' });
       })
       .catch((err) => {
         console.log(err);
-        setIsLoading(false);
-        setError('something went wrong');
+        dispatchHttpAct({ type: 'ERROR', error: err.message });
       });
   };
 
   const queryedIngredientsHandler = useCallback((comingIngredients) => {
     // if this is executing
-    setIngredients(comingIngredients);
+    dispatchIngAct({ type: 'SET', ingredients: comingIngredients });
   }, []);
 
   return (
     <div className="App">
       <IngredientForm
         onAddIngredient={saveIngredientInDB}
-        isLoading={isLoading}
+        isLoading={httpState.isLoading}
       />
 
       <section>
@@ -83,10 +110,10 @@ function Ingredients(props) {
           onRemoveItem={removeItemHandler}
           ingredients={ingredients}
         />
-        {error && (
-          <ErrrorModal onClose={() => setError(null)}>
+        {httpState.error && (
+          <ErrrorModal onClose={() => dispatchHttpAct({ type: 'CLEAR' })}>
             {' '}
-            <p>{error}</p>{' '}
+            <p>{httpState.error}</p>{' '}
           </ErrrorModal>
         )}
       </section>
