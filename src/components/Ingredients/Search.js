@@ -43,7 +43,7 @@ const Search = React.memo(({ onFilteredIngredients }) => {
       return () => {
         clearTimeout(timer);
       };
-    }, 500);
+    }, 1000);
   }, [filterBy, onFilteredIngredients, searchByInputRef]);
 
   return (

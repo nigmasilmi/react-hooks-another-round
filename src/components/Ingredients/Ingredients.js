@@ -1,4 +1,4 @@
-import React, { useCallback, useReducer } from 'react';
+import React, { useCallback, useReducer, useEffect, useMemo } from 'react';
 
 import IngredientForm from './IngredientForm';
 import IngredientList from './IngredientList';
@@ -40,7 +40,11 @@ function Ingredients(props) {
   });
   const [ingredients, dispatchIngAct] = useReducer(ingredientsReducer, []);
 
-  const saveIngredientInDB = (ingredient) => {
+  useEffect(() => {
+    console.log('RENDERING INGREDIENTS');
+  }, [ingredients]);
+
+  const saveIngredientInDB = useCallback((ingredient) => {
     dispatchHttpAct({ type: 'SEND' });
 
     fetch(process.env.REACT_APP_FIREBASE_ENDPOINT, {
@@ -66,9 +70,9 @@ function Ingredients(props) {
         console.log(err.message);
         dispatchHttpAct({ type: 'ERROR', error: err.message });
       });
-  };
+  }, []);
 
-  const removeItemHandler = (ingredientId) => {
+  const removeItemHandler = useCallback((ingredientId) => {
     dispatchHttpAct({ type: 'SEND' });
 
     fetch(
@@ -90,11 +94,24 @@ function Ingredients(props) {
         console.log(err);
         dispatchHttpAct({ type: 'ERROR', error: err.message });
       });
-  };
+  }, []);
 
   const queryedIngredientsHandler = useCallback((comingIngredients) => {
     // if this is executing
     dispatchIngAct({ type: 'SET', ingredients: comingIngredients });
+  }, []);
+
+  const ingredientList = useMemo(() => {
+    return (
+      <IngredientList
+        onRemoveItem={removeItemHandler}
+        ingredients={ingredients}
+      />
+    );
+  }, [removeItemHandler, ingredients]);
+
+  const clearError = useCallback(() => {
+    dispatchHttpAct({ type: 'CLEAR' });
   }, []);
 
   return (
@@ -106,12 +123,9 @@ function Ingredients(props) {
 
       <section>
         <Search onFilteredIngredients={queryedIngredientsHandler} />
-        <IngredientList
-          onRemoveItem={removeItemHandler}
-          ingredients={ingredients}
-        />
+        {ingredientList}
         {httpState.error && (
-          <ErrrorModal onClose={() => dispatchHttpAct({ type: 'CLEAR' })}>
+          <ErrrorModal onClose={clearError}>
             {' '}
             <p>{httpState.error}</p>{' '}
           </ErrrorModal>
