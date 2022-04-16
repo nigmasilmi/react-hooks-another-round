@@ -1,8 +1,9 @@
 import React, { useCallback, useReducer, useEffect, useMemo } from 'react';
+import useHttp from '../../hooks/use-http';
 
 import IngredientForm from './IngredientForm';
 import IngredientList from './IngredientList';
-import ErrrorModal from '../UI/ErrorModal';
+import ErrorModal from '../UI/ErrorModal';
 import Search from './Search';
 
 const ingredientsReducer = (currentIngredients, action) => {
@@ -10,6 +11,7 @@ const ingredientsReducer = (currentIngredients, action) => {
     case 'SET':
       return action.ingredients;
     case 'ADD':
+      console.log('dispatching add');
       return [action.ingredient, ...currentIngredients];
     case 'DELETE':
       return currentIngredients.filter((ing) => ing.id !== action.id);
@@ -18,83 +20,57 @@ const ingredientsReducer = (currentIngredients, action) => {
   }
 };
 
-const httpReducer = (httpState, action) => {
-  switch (action.type) {
-    case 'SEND':
-      return { isLoading: true, error: null };
-    case 'RESPONSE':
-      return { ...httpState, isLoading: false };
-    case 'ERROR':
-      return { isLoading: false, error: action.error };
-    case 'CLEAR':
-      return { ...httpState, error: null };
-    default:
-      throw new Error('Should not reach here');
-  }
-};
-
 function Ingredients(props) {
-  const [httpState, dispatchHttpAct] = useReducer(httpReducer, {
-    isLoading: false,
-    error: null,
-  });
   const [ingredients, dispatchIngAct] = useReducer(ingredientsReducer, []);
+  const {
+    data,
+    error,
+    isLoading,
+    sendRequest,
+    reqExtra,
+    reqIdentifier,
+    clear,
+  } = useHttp();
 
   useEffect(() => {
-    console.log('RENDERING INGREDIENTS');
-  }, [ingredients]);
-
-  const saveIngredientInDB = useCallback((ingredient) => {
-    dispatchHttpAct({ type: 'SEND' });
-
-    fetch(process.env.REACT_APP_FIREBASE_ENDPOINT, {
-      method: 'POST',
-      body: JSON.stringify(ingredient),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-      .then((response) => {
-        // .json() extracts the body and converts it to a javascript object
-        // returns a promise
-        return response.json();
-      })
-      .then((data) => {
-        dispatchIngAct({
-          type: 'ADD',
-          ingredient: { id: data.name, ...ingredient },
-        });
-        dispatchHttpAct({ type: 'RESPONSE' });
-      })
-      .catch((err) => {
-        console.log(err.message);
-        dispatchHttpAct({ type: 'ERROR', error: err.message });
+    console.log('isLoading', isLoading);
+    console.log('error', error);
+    console.log('reqIdentifier', reqIdentifier);
+    if (!isLoading && !error && reqIdentifier === 'REMOVE_INGREDIENT') {
+      dispatchIngAct({ type: 'DELETE', id: reqExtra });
+    } else if (!isLoading && !error && reqIdentifier === 'ADD_INGREDIENT') {
+      dispatchIngAct({
+        type: 'ADD',
+        ingredient: { id: data.name, ...reqExtra },
       });
-  }, []);
+    }
+  }, [data, reqExtra, reqIdentifier, isLoading, error]);
 
-  const removeItemHandler = useCallback((ingredientId) => {
-    dispatchHttpAct({ type: 'SEND' });
+  const saveIngredientInDB = useCallback(
+    (ingredient) => {
+      sendRequest(
+        process.env.REACT_APP_FIREBASE_ENDPOINT,
+        'POST',
+        JSON.stringify(ingredient),
+        ingredient,
+        'ADD_INGREDIENT'
+      );
+    },
+    [sendRequest]
+  );
 
-    fetch(
-      `${process.env.REACT_APP_FIREBASE_DELETE_BASE_ENDPOINT}/ingredients/${ingredientId}.json`,
-      {
-        method: 'DELETE',
-      }
-    )
-      .then((response) => {
-        // .json() extracts the body and converts it to a javascript object
-        // returns a promise
-        return response.json();
-      })
-      .then((data) => {
-        dispatchIngAct({ type: 'DELETE', id: ingredientId });
-        dispatchHttpAct({ type: 'RESPONSE' });
-      })
-      .catch((err) => {
-        console.log(err);
-        dispatchHttpAct({ type: 'ERROR', error: err.message });
-      });
-  }, []);
+  const removeItemHandler = useCallback(
+    (ingredientId) => {
+      sendRequest(
+        `${process.env.REACT_APP_FIREBASE_DELETE_BASE_ENDPOINT}/ingredients/${ingredientId}.json`,
+        'DELETE',
+        null,
+        ingredientId,
+        'REMOVE_INGREDIENT'
+      );
+    },
+    [sendRequest]
+  );
 
   const queryedIngredientsHandler = useCallback((comingIngredients) => {
     // if this is executing
@@ -110,25 +86,21 @@ function Ingredients(props) {
     );
   }, [removeItemHandler, ingredients]);
 
-  const clearError = useCallback(() => {
-    dispatchHttpAct({ type: 'CLEAR' });
-  }, []);
-
   return (
     <div className="App">
       <IngredientForm
         onAddIngredient={saveIngredientInDB}
-        isLoading={httpState.isLoading}
+        isLoading={isLoading}
       />
 
       <section>
         <Search onFilteredIngredients={queryedIngredientsHandler} />
         {ingredientList}
-        {httpState.error && (
-          <ErrrorModal onClose={clearError}>
+        {error && (
+          <ErrorModal onClose={clear}>
             {' '}
-            <p>{httpState.error}</p>{' '}
-          </ErrrorModal>
+            <p>{error}</p>{' '}
+          </ErrorModal>
         )}
       </section>
     </div>
